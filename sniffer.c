@@ -16,6 +16,7 @@
 
 unsigned long p_cnt;
 struct packet_record* packets[MAX_SNIFF_PACKET_NR];
+char sniffer_log[MAX_SNIFFER_LOG_LEN];
 
 pcap_t *init_device(){
   char errbuf[PCAP_ERRBUF_SIZE];
@@ -53,7 +54,7 @@ getin:
 }
 
 int main(){
-  init_text_ui();
+  
   char errbuf[PCAP_ERRBUF_SIZE];
   pcap_t* handle = init_device();
   
@@ -63,16 +64,13 @@ int main(){
   init_global_parameter(&cfg);
   
 
-  // pcap_t *handle = pcap_open_offline("./http.pcapng", errbuf);
-  if(pcap_loop(handle, cfg.max_packet_sniff, my_pcap_handler, NULL)) printf("[-] error when sniffing %s\n", pcap_geterr(handle));
+  init_text_ui();
+
+  
+  if(pcap_loop(handle, cfg.max_packet_sniff, my_pcap_handler, NULL))
+    printf("[-] error when sniffing %s\n", pcap_geterr(handle));
   p_cnt++;
-  // struct packet_record* filterd[MAX_SNIFF_PACKET_NR];
-  // memset(filterd, 0, 8 * MAX_SNIFF_PACKET_NR);
-  // filter_entry(PROTOTYPE_TCP, "10.203.8.99", "202.205.80.182", 0, 0, &filterd);
-  // for(int i=1;i<p_cnt;i++){
-  //   filter_tcp_output(filterd[i]);
-  // }
-  // trace_tcp_stream(48);
+
   return 0;
 }
 
@@ -95,9 +93,11 @@ void my_pcap_handler(u_char *user, const struct pcap_pkthdr *h, const u_char *by
     case ETHERTYPE_ARP:
       sniffer_arp_handler((char*)bytes, packet_l);break;
     default:
-      printf("[*] [ %lu ] unknown ETHER packet received: %s -> %s\n", p_cnt, 
+      memset(sniffer_log, 0, MAX_SNIFFER_LOG_LEN);
+      sprintf(sniffer_log, "[*] [ %lu ] unknown ETHER packet received: %s -> %s\n", p_cnt, 
         ether_ntoa((struct ether_addr*)&eth_header->ether_shost), 
         ether_ntoa((struct ether_addr*)&eth_header->ether_dhost));
+      sniffer_log_print(sniffer_log);
       break;
   }
 
@@ -107,9 +107,11 @@ void my_pcap_handler(u_char *user, const struct pcap_pkthdr *h, const u_char *by
 void sniffer_arp_handler(char* raw, uint64_t raw_l){
   const struct ether_header* eth_header;
   eth_header = (struct ether_header*)raw;
-  printf("[*] [ %lu ] arp: %s -> %s\n", p_cnt, 
+  memset(sniffer_log, 0, MAX_SNIFFER_LOG_LEN);
+  sprintf(sniffer_log, "[*] [ %lu ] arp: %s -> %s\n", p_cnt, 
     ether_ntoa((struct ether_addr*)&eth_header->ether_shost), 
     ether_ntoa((struct ether_addr*)&eth_header->ether_dhost));
+  sniffer_log_print(sniffer_log);
   return;
 }
 
@@ -145,7 +147,9 @@ void sniffer_ip_handler(char* raw, uint64_t raw_l){
     case IPPROTO_ICMP:
       sniffer_icmp_handler(ip_payload, &trace, ip_payload_l);break;
     default:
-      printf("[-] [ %lu ] unkown IP packet received: %s -> %s\n", p_cnt, sourceIP, destIP);break;
+      memset(sniffer_log, 0, MAX_SNIFFER_LOG_LEN);
+      sprintf(sniffer_log, "[-] [ %lu ] unkown IP packet received: %s -> %s\n", p_cnt, sourceIP, destIP);break;
+      sniffer_log_print(sniffer_log);
   }
 }
 
@@ -196,53 +200,62 @@ void sniffer_udp_handler(char* raw, struct ip_packet_trace* ip_trace, uint64_t r
   memcpy(&packets[p_cnt]->trace, &trace, sizeof(struct udp_packet_trace));
   packets[p_cnt]->type = PROTOTYPE_UDP;
 
-
-  printf("[*] [ %lu ] udp: %s:%hu -> %s:%hu\n",
+  memset(sniffer_log, 0, MAX_SNIFFER_LOG_LEN);
+  sprintf(sniffer_log, "[*] [ %lu ] udp: %s:%hu -> %s:%hu\n",
           p_cnt,
           ip_trace->sourceIP, trace.sourcePort,
           ip_trace->destIP, trace.destPort);
+  sniffer_log_print(sniffer_log);
   return;
 }
 
 void sniffer_icmp_handler(char* raw, struct ip_packet_trace* ip_trace, uint64_t raw_l){
   packets[p_cnt]->type = PROTOTYPE_ICMP;
-  printf("[*] [ %lu ] icmp: %s -> %s\n",
+  memset(sniffer_log, 0, MAX_SNIFFER_LOG_LEN);
+  sprintf(sniffer_log, "[*] [ %lu ] icmp: %s -> %s\n",
           p_cnt,
           ip_trace->sourceIP, 
           ip_trace->destIP);
+  sniffer_log_print(sniffer_log);
   return;
 }
 
 
 void sniffer_tls_handler(char* raw, struct tcp_packet_trace* tcp_trace, uint64_t raw_l){
   packets[p_cnt]->type = PROTOTYPE_TLS;
-  printf("[*] [ %lu ] tls: %s:%hu -> %s:%hu\n",
+  memset(sniffer_log, 0, MAX_SNIFFER_LOG_LEN);
+  sprintf(sniffer_log, "[*] [ %lu ] tls: %s:%hu -> %s:%hu\n",
           p_cnt,
           tcp_trace->ip_trace.sourceIP, 
           tcp_trace->sourcePort, 
           tcp_trace->ip_trace.destIP, 
           tcp_trace->destPort);
+  sniffer_log_print(sniffer_log);
   return;
 }
 
 void sniffer_general_tcp_handler(char* raw, struct tcp_packet_trace* tcp_trace, uint64_t raw_l){
-  printf("[*] [ %lu ] tcp: %s:%hu -> %s:%hu\n",
+  memset(sniffer_log, 0, MAX_SNIFFER_LOG_LEN);
+  sprintf(sniffer_log, "[*] [ %lu ] tcp: %s:%hu -> %s:%hu\n",
           p_cnt,
           tcp_trace->ip_trace.sourceIP, 
           tcp_trace->sourcePort, 
           tcp_trace->ip_trace.destIP, 
           tcp_trace->destPort);
+  sniffer_log_print(sniffer_log);
   return;
 }
 
 void sniffer_http_handler(char* raw, struct tcp_packet_trace* tcp_trace, uint64_t raw_l){
   packets[p_cnt]->type = PROTOTYPE_HTTP;
-  printf("[*] [ %lu ] http: %s:%hu -> %s:%hu\n",
+  memset(sniffer_log, 0, MAX_SNIFFER_LOG_LEN);
+  sprintf(sniffer_log, "[*] [ %lu ] http: %s:%hu -> %s:%hu\n",
           p_cnt,
           tcp_trace->ip_trace.sourceIP, 
           tcp_trace->sourcePort, 
           tcp_trace->ip_trace.destIP, 
           tcp_trace->destPort);
+  sniffer_log_print(sniffer_log);
   return;
 }
 
@@ -299,46 +312,49 @@ void filter_entry(enum proto_type proto, char* sourceIP, char* destIP, uint16_t 
 
 void filter_output(enum proto_type proto, struct packet_record* p){
   if(!p) return;
+  memset(sniffer_log, 0, MAX_SNIFFER_LOG_LEN);
   switch(proto){
     case PROTOTYPE_TCP:
-      printf("[*] [ %lu ] tcp: %s:%hu -> %s:%hu\n",
+      sprintf(sniffer_log, "[*] [ %lu ] tcp: %s:%hu -> %s:%hu\n",
           p->idx,
           p->trace.tcp_trace.ip_trace.sourceIP, p->trace.tcp_trace.sourcePort,
           p->trace.tcp_trace.ip_trace.destIP, p->trace.tcp_trace.destPort);
       break;
 
     case PROTOTYPE_HTTP:
-      printf("[*] [ %lu ] http: %s:%hu -> %s:%hu\n",
+      sprintf(sniffer_log, "[*] [ %lu ] http: %s:%hu -> %s:%hu\n",
         p->idx,
         p->trace.tcp_trace.ip_trace.sourceIP, p->trace.tcp_trace.sourcePort,
         p->trace.tcp_trace.ip_trace.destIP, p->trace.tcp_trace.destPort);
       break;
 
     case PROTOTYPE_TLS:
-      printf("[*] [ %lu ] tls: %s:%hu -> %s:%hu\n",
+      sprintf(sniffer_log, "[*] [ %lu ] tls: %s:%hu -> %s:%hu\n",
         p->idx,
         p->trace.tcp_trace.ip_trace.sourceIP, p->trace.tcp_trace.sourcePort,
         p->trace.tcp_trace.ip_trace.destIP, p->trace.tcp_trace.destPort);
       break;
 
     case PROTOTYPE_UDP:
-      printf("[*] [ %lu ] udp: %s:%hu -> %s:%hu\n",
+      sprintf(sniffer_log, "[*] [ %lu ] udp: %s:%hu -> %s:%hu\n",
         p->idx,
         p->trace.udp_trace.ip_trace.sourceIP, p->trace.udp_trace.sourcePort,
         p->trace.udp_trace.ip_trace.destIP, p->trace.udp_trace.destPort);
       break;
 
     case PROTOTYPE_ICMP:
-      printf("[*] [ %lu ] icmp: %s -> %s\n",
+      sprintf(sniffer_log, "[*] [ %lu ] icmp: %s -> %s\n",
         p->idx,
         p->trace.ip_trace.sourceIP,
         p->trace.ip_trace.destIP);
       break;
 
     default:
-      puts("[--] WTF in filter_output()");
+      sprintf(sniffer_log, "[--] WTF in filter_output()");
       break;
   }
+
+  sniffer_log_print(sniffer_log);
   return;
 }
 
@@ -388,18 +404,19 @@ int trace_tcp_stream(unsigned long idx){
 }
 
 void show_packet_content(unsigned long idx){
-  if(idx >= MAX_SNIFF_PACKET_NR){puts("[-] index out of range");return;}
+  if(idx >= MAX_SNIFF_PACKET_NR){sniffer_log_print("[-] index out of range");return;}
   struct packet_record* p = packets[idx];
-  if(!p) {puts("[-] no such packet"); return;}
+  if(!p) {sniffer_log_print("[-] no such packet"); return;}
 
   char* ctnt = p->packet;
   uint64_t packet_l = p->pcap_hdr.caplen;
 
+
   for(uint64_t i=0;i<packet_l;i++){
     if(ctnt[i] > 32 && ctnt[i] < 127){
-      printf("%c", ctnt[i]);
+      sprintf(sniffer_log, "%c", ctnt[i]);
     }else{
-      printf(".");
+      sprintf(sniffer_log, ".");
     }
   }
 }

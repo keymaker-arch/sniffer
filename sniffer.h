@@ -68,4 +68,7 @@ void filter_output(enum proto_type proto, struct packet_record* p);
 int trace_tcp_stream(unsigned long idx);
 void show_packet_content(unsigned long idx);
 
+
+unsigned long p_cnt;
+struct packet_record* packets[MAX_SNIFF_PACKET_NR];
 #endif
